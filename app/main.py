@@ -2,7 +2,7 @@ import sqlite3
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 app = FastAPI(title="Paper Vault API")
@@ -18,6 +18,15 @@ class Document(BaseModel):
     id: str
     filename: str
     size: int
+
+
+class DocumentContent(Document):
+    content: str
+
+
+class SearchResult(Document):
+    excerpt: str
+    occurrences: int
 
 
 def get_connection():
@@ -37,6 +46,15 @@ def init_db():
             )
             """
         )
+
+
+def find_saved_file(document_id: str) -> Path | None:
+    saved_files = list(UPLOAD_DIR.glob(f"{document_id}.*"))
+
+    if not saved_files:
+        return None
+
+    return saved_files[0]
 
 
 init_db()
@@ -94,6 +112,100 @@ async def upload_document(file: UploadFile = File(...)):
 
     return document
 
+
+@app.get(
+    "/documents/{document_id}/content",
+    response_model=DocumentContent,
+)
+def get_document_content(document_id: str):
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT id, filename, size
+            FROM documents
+            WHERE id = ?
+            """,
+            (document_id,),
+        ).fetchone()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+    saved_file = find_saved_file(document_id)
+
+    if saved_file is None:
+        raise HTTPException(status_code=404, detail="找不到对应的原始文件")
+
+    try:
+        content = saved_file.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="文件不是 UTF-8 文本")
+
+    return {
+        "id": row["id"],
+        "filename": row["filename"],
+        "size": row["size"],
+        "content": content,
+    }
+
+
+@app.get("/search", response_model=list[SearchResult])
+def search_documents(
+    q: str = Query(..., min_length=1, description="需要搜索的关键词")
+):
+    keyword = q.strip().lower()
+
+    if not keyword:
+        raise HTTPException(status_code=400, detail="关键词不能为空")
+
+    with get_connection() as connection:
+        rows = connection.execute(
+            "SELECT id, filename, size FROM documents ORDER BY rowid DESC"
+        ).fetchall()
+
+    results = []
+
+    for row in rows:
+        saved_file = find_saved_file(row["id"])
+
+        if saved_file is None:
+            continue
+
+        try:
+            content = saved_file.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+
+        content_lower = content.lower()
+        first_position = content_lower.find(keyword)
+
+        if first_position == -1:
+            continue
+
+        start = max(0, first_position - 40)
+        end = min(len(content), first_position + len(keyword) + 80)
+
+        excerpt = content[start:end].replace("\n", " ")
+
+        if start > 0:
+            excerpt = "..." + excerpt
+
+        if end < len(content):
+            excerpt = excerpt + "..."
+
+        results.append(
+            {
+                "id": row["id"],
+                "filename": row["filename"],
+                "size": row["size"],
+                "excerpt": excerpt,
+                "occurrences": content_lower.count(keyword),
+            }
+        )
+
+    return results
+
+
 @app.delete("/documents/{document_id}", status_code=204)
 def delete_document(document_id: str):
     with get_connection() as connection:
@@ -110,8 +222,9 @@ def delete_document(document_id: str):
             (document_id,),
         )
 
-    saved_files = list(UPLOAD_DIR.glob(f"{document_id}.*"))
-    for saved_file in saved_files:
+    saved_file = find_saved_file(document_id)
+
+    if saved_file is not None:
         saved_file.unlink()
 
     return None
