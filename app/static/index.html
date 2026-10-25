@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Paper Vault</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <main class="panel">
+        <h1>Paper Vault</h1>
+        <p>向已上传的论文和课程资料提问，答案会显示引用来源与文本块位置。</p>
+
+        <form id="ask-form">
+            <input
+                id="question"
+                name="question"
+                placeholder="例如：RAG 检索有哪些关键步骤？"
+                required
+            >
+            <button type="submit">提问</button>
+        </form>
+
+        <p id="status" role="status" aria-live="polite"></p>
+        <section id="result" aria-label="问答结果"></section>
+        <p><a href="/docs">打开 API 文档</a></p>
+    </main>
+
+    <script src="/static/app.js" defer></script>
+</body>
+</html>
