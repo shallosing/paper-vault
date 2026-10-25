@@ -66,7 +66,7 @@ fastapi dev app\main.py
 若要接入 OpenAI 兼容接口，在 PowerShell 当前窗口设置：
 
 ```powershell
-$env:LLM_API_KEY = "sk-77fcd02866ef43fa83a92f537931c864"
+$env:LLM_API_KEY = "你的密钥"
 $env:LLM_BASE_URL = "https://api.deepseek.com/v1"
 $env:LLM_MODEL = "deepseek-chat"
 ```
